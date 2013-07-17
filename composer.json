@@ -1,7 +1,7 @@
 {
     "name": "che/dbal-vertica-driver",
     "description": "Doctrine DBAL driver for Vertica",
-    "keywords": ["dbal", "doctrine", "vertica", "driver"],
+    "keywords": ["database", "dbal", "doctrine", "vertica", "driver", "analytics"],
     "homepage": "http://github.com/chEbba/dbal-vertica-driver",
     "type": "library",
     "license": "MIT",
