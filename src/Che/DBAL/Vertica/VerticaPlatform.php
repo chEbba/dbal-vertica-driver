@@ -160,8 +160,9 @@ class VerticaPlatform extends PostgreSqlPlatform
         if (isset($options['indexes']) && ! empty($options['indexes'])) {
             /** @var Index $index */
             foreach ($options['indexes'] as $index) {
-                if ($index->isUnique() && !$index->isPrimary())
+                if ($index->isUnique() && !$index->isPrimary()) {
                     $sql[] = $this->getCreateConstraintSQL($index, $tableName);
+                }
             }
         }
 
