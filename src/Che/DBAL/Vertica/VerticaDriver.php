@@ -46,7 +46,7 @@ class VerticaDriver implements Driver
         if (!empty($params['dsn'])) {
             $dsn .= $params['dsn'];
         } else {
-            $dsn .= 'Driver=' . (!empty($params['driver']) ? $params['driver'] : 'Vertica') . ';';
+            $dsn .= 'Driver=' . (!empty($params['odbc_driver']) ? $params['odbc_driver'] : 'Vertica') . ';';
             if (isset($params['host'])) {
                 $dsn .= 'Servername=' . $params['host'] . ';';
             }
