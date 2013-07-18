@@ -90,12 +90,9 @@ class VerticaPlatform extends PostgreSqlPlatform
      */
     public function getListTableForeignKeysSQL($table, $database = null)
     {
-        return sprintf(
-            "SELECT constraint_id, constraint_name, column_name, reference_table_name, reference_column_name
+        return "SELECT constraint_id, constraint_name, column_name, reference_table_name, reference_column_name
                 FROM v_catalog.foreign_keys
-                WHERE table_name = '%s'",
-            $table
-        );
+                WHERE table_name = '$table'";
     }
 
     /**
@@ -103,8 +100,10 @@ class VerticaPlatform extends PostgreSqlPlatform
      */
     public function getListTableConstraintsSQL($table)
     {
-        return "SELECT constraint_id, column_name, constraint_name, constraint_type FROM v_catalog.constraint_columns
-                WHERE constraint_type IN ('p', 'u') AND table_name = '$table'";
+        return "SELECT c.constraint_id, c.column_name, c.constraint_name, c.constraint_type FROM v_catalog.constraint_columns c
+                  LEFT JOIN primary_keys p ON p.constraint_id = c.constraint_id AND p.column_name = c.column_name
+                WHERE c.constraint_type IN ('u', 'p') AND c.table_name = '$table'
+                ORDER BY c.constraint_id, p.ordinal_position, c.column_name";
     }
 
     /**
@@ -112,7 +111,7 @@ class VerticaPlatform extends PostgreSqlPlatform
      */
     public function getListTableIndexesSQL($table, $currentDatabase = null)
     {
-        // There is no indexes in Vertica but doctrine treated constraints as indexes
+        // There is no indexes in Vertica but doctrine treats unique constraints as indexes
         return $this->getListTableConstraintsSQL($table);
     }
 
@@ -120,6 +119,15 @@ class VerticaPlatform extends PostgreSqlPlatform
     {
         if ($index->isPrimary()) {
             return $this->getCreatePrimaryKeySQL($index, $table);
+        }
+
+        if ($index->isSimpleIndex()) {
+            throw new DBALException(sprintf(
+                'Can not create index "%s" for table "%s": %s does not support common indexes',
+                $index->getName(),
+                $table,
+                $this->getName()
+            ));
         }
 
         return $this->getCreateConstraintSQL($index, $table);
@@ -316,7 +324,7 @@ class VerticaPlatform extends PostgreSqlPlatform
     {
         $this->doctrineTypeMapping = [
             // Vertica has only 64-bit integer, but we will treat al ass integer except bigint
-            'bigint'            => 'bigint',
+            'bigint'            => 'integer',
             'integer'           => 'integer',
             'int'               => 'integer',
             'int8'              => 'integer',

@@ -106,12 +106,29 @@ class VerticaSchemaManagerTest extends SchemaManagerFunctionalTestCase
         $this->assertEquals(2, count($tableIndexes));
 
         $this->assertArrayHasKey('primary', $tableIndexes, 'listTableIndexes() has to return a "primary" array key.');
-        $this->assertEquals(['id', 'other_id'], array_map('strtolower', $tableIndexes['primary']->getColumns()));
+        $this->assertSame(['id', 'other_id'], array_map('strtolower', $tableIndexes['primary']->getColumns()));
         $this->assertTrue($tableIndexes['primary']->isUnique());
         $this->assertTrue($tableIndexes['primary']->isPrimary());
 
         $this->assertEquals('test_index_name', $tableIndexes['test_index_name']->getName());
-        $this->assertEquals(['id', 'test'], array_map('strtolower', $tableIndexes['test_index_name']->getColumns()));
+        $this->assertSame(['id', 'test'], array_map('strtolower', $tableIndexes['test_index_name']->getColumns()));
+        $this->assertTrue($tableIndexes['test_index_name']->isUnique());
+        $this->assertFalse($tableIndexes['test_index_name']->isPrimary());
+    }
+
+    public function testListUniqueIndexesAlphabetical()
+    {
+        $table = $this->getTestCompositeTable('list_table_indexes_test');
+        $table->addUniqueIndex(['test', 'other_id'], 'test_index_name');
+
+        $this->_sm->dropAndCreateTable($table);
+
+        $tableIndexes = $this->_sm->listTableIndexes('list_table_indexes_test');
+
+        $this->assertEquals(2, count($tableIndexes));
+
+        $this->assertEquals('test_index_name', $tableIndexes['test_index_name']->getName());
+        $this->assertSame(['other_id', 'test'], array_map('strtolower', $tableIndexes['test_index_name']->getColumns()));
         $this->assertTrue($tableIndexes['test_index_name']->isUnique());
         $this->assertFalse($tableIndexes['test_index_name']->isPrimary());
     }
