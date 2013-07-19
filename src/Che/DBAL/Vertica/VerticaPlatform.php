@@ -10,11 +10,16 @@
 namespace Che\DBAL\Vertica;
 
 use Doctrine\DBAL\DBALException;
+use Doctrine\DBAL\Event\SchemaCreateTableColumnEventArgs;
+use Doctrine\DBAL\Event\SchemaCreateTableEventArgs;
+use Doctrine\DBAL\Events;
 use Doctrine\DBAL\Platforms\PostgreSqlPlatform;
 use Doctrine\DBAL\Schema\Column;
+use Doctrine\DBAL\Schema\ColumnDiff;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Sequence;
+use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Schema\TableDiff;
 use Doctrine\DBAL\Types\Type;
 
@@ -44,9 +49,7 @@ class VerticaPlatform extends PostgreSqlPlatform
      */
     public function supportsCommentOnStatement()
     {
-        // Vertica has COMMENT ON COLUMN|TABLE but column comments are supported only for projection columns
-        // TODO: store db type comments in table comment?
-        return false;
+        return true;
     }
 
     public function getCreateDatabaseSQL($name)
@@ -138,15 +141,35 @@ class VerticaPlatform extends PostgreSqlPlatform
      */
     public function getListTableColumnsSQL($table, $database = null)
     {
-        return sprintf(
-            "SELECT col.column_name, col.data_type, col.character_maximum_length, col.numeric_precision, col.numeric_scale,
-                    col.is_nullable, col.column_default, col.is_identity, con.constraint_type
+        return "SELECT col.column_name, col.data_type, col.character_maximum_length, col.numeric_precision, col.numeric_scale,
+                    col.is_nullable, col.column_default, col.is_identity, con.constraint_type, com.comment
                 FROM v_catalog.columns col
-                LEFT JOIN v_catalog.constraint_columns con ON
-                    con.table_id = col.table_id AND con.column_name = col.column_name AND constraint_type = 'p'
-                WHERE col.table_name = '%s'",
-            $table
-        );
+                LEFT JOIN v_catalog.constraint_columns con
+                    ON con.table_id = col.table_id AND con.column_name = col.column_name AND constraint_type = 'p'
+                LEFT JOIN v_catalog.comments com ON com.object_type = 'TABLE' AND com.object_name = col.table_name
+                WHERE col.table_name = '$table'";
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getCreateTableSQL(Table $table, $createFlags = self::CREATE_INDEXES)
+    {
+        $sql = parent::getCreateTableSQL($table, $createFlags);
+
+        $columnComments = [];
+        foreach ($table->getColumns() as $column) {
+            if ($comment = $this->getColumnComment($column)) {
+                $columnComments[$column->getName()] = $comment;
+            }
+        }
+        if (!empty($columnComments)) {
+            // Remove empty items from column comments
+            $sql = array_filter($sql);
+            $sql[] = $this->getCommentOnTableColumnsSQL($table->getName(), $columnComments);
+        }
+
+        return $sql;
     }
 
     /**
@@ -203,15 +226,51 @@ class VerticaPlatform extends PostgreSqlPlatform
 
             $query = 'ADD ' . $this->getColumnDeclarationSQL($column->getQuotedName($this), $columnData);
             $columnSql[] = 'ALTER TABLE ' . $diff->name . ' ' . $query;
-            if ($comment = $this->getColumnComment($column)) {
-                $columnSql[] = $this->getCommentOnColumnSQL($diff->name, $column->getName(), $comment);
-            }
             if ($notNullWithoutDefault) {
                 $columnSql[] = 'ALTER TABLE ' . $diff->name . ' ALTER ' . $column->getQuotedName($this) . ' SET NOT NULL';
             }
         }
 
         return true;
+    }
+
+    public function getAlterTableSQL(TableDiff $diff)
+    {
+        $sql = parent::getAlterTableSQL($diff);
+
+        $columnComments = [];
+        /** @var ColumnDiff $columnDiff */
+        foreach ($diff->changedColumns as $columnDiff) {
+            if ($columnDiff->hasChanged('comment') && $comment = $this->getColumnComment($columnDiff->column)) {
+                $columnComments[$columnDiff->column->getName()] = $comment;
+            }
+        }
+        if (!empty($columnComments)) {
+            $sql[] = $this->getCommentOnTableColumnsSQL($diff->name, $columnComments);
+        }
+
+        return $sql;
+    }
+
+    /**
+     * SQL for generating table comment with column comments
+     *
+     * @param array $tableName
+     * @param array $columnComments An array of [columnName => columnComment]
+     *
+     * @return string
+     */
+    protected function getCommentOnTableColumnsSQL($tableName, array $columnComments)
+    {
+        return sprintf("COMMENT ON TABLE %s IS '%s'", $tableName, json_encode($columnComments));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getCommentOnColumnSQL($tableName, $columnName, $comment)
+    {
+        return '';
     }
 
     /**

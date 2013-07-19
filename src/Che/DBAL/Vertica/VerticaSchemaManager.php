@@ -131,6 +131,16 @@ class VerticaSchemaManager extends PostgreSqlSchemaManager
             $dbType = 'text';
         }
 
+        if ($tableColumn['comment']) {
+            $columnComments = json_decode($tableColumn['comment'], true);
+            $tableColumn['comment'] = !empty($columnComments[$tableColumn['column_name']]) ?
+                $columnComments[$tableColumn['column_name']] : '';
+        }
+
+        $type = $this->_platform->getDoctrineTypeMapping($dbType);
+        $type = $this->extractDoctrineTypeFromComment($tableColumn['comment'], $type);
+        $tableColumn['comment'] = $this->removeDoctrineTypeFromComment($tableColumn['comment'], $type);
+
         // Unescape default value
         if (preg_match("/^'(.*)'(::.*)?$/", $tableColumn['column_default'], $matches)) {
             $tableColumn['column_default'] = $matches[1];
@@ -138,6 +148,10 @@ class VerticaSchemaManager extends PostgreSqlSchemaManager
 
         if (stripos($tableColumn['column_default'], 'NULL') === 0) {
             $tableColumn['column_default'] = null;
+        }
+
+        if (!empty($tableColumn['column_default']) && (string) $type == 'boolean') {
+            $tableColumn['column_default'] = $tableColumn['column_default'] === 'true' ? true : false;
         }
 
         $options = [
@@ -150,10 +164,10 @@ class VerticaSchemaManager extends PostgreSqlSchemaManager
             'fixed'         => $dbType == 'char' ? true : ($dbType == 'varchar' ? false : null),
             'unsigned'      => false,
             'autoincrement' => (bool) $tableColumn['is_identity'],
-            'comment'       => '',
+            'comment'       => $tableColumn['comment'],
         ];
 
-        $type = $this->_platform->getDoctrineTypeMapping($dbType);
+
 
         return new Column($tableColumn['column_name'], Type::getType($type), $options);
     }
