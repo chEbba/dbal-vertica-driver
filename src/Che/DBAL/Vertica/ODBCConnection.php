@@ -36,6 +36,10 @@ class ODBCConnection implements Connection
             $error = error_get_last();
             throw new ODBCException($error['message']);
         }
+        
+        if ( ! empty( $this->options["search_path"] ) ) {
+            odbc_exec($this->dbh, "SET search_path to ".$this->options["search_path"]);
+        }
     }
 
     /**
